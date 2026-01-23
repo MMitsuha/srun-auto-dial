@@ -1,0 +1,26 @@
+[package]
+name = "srun-auto-dial"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+futures-util = "0.3.31"
+netlink-packet-route = "0.28.0"
+reqwest = { version = "0.13.1", features = ["json", "query"] }
+rtnetlink = "0.20.0"
+tokio = { version = "1.49.0", features = ["full"] }
+dhcproto = "0.14.0"
+pnet = "0.35.0"
+anyhow = "1.0.100"
+chrono = "0.4.42"
+rand = "0.9.2"
+regex = "1.12.2"
+serde = "1.0.228"
+serde_json = "1.0.149"
+hmac = "0.12.1"
+sha1 = "0.10.6"
+hex = "0.4.3"
+md-5 = "0.10.6"
+openssl = { version = "0.10.75", features = ["vendored"] }
+inquire = "0.9.1"
+inquire-derive = "0.9.1"
