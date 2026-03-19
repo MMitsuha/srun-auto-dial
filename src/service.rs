@@ -86,9 +86,16 @@ impl SrunService {
     pub async fn login_local(
         &self,
         interface: &str,
-        username: &str,
-        password: &str,
+        credentials: Option<(&str, &str)>,
     ) -> Result<LoginResult> {
+        let (username, password) = match credentials {
+            Some((u, p)) => (u.to_string(), p.to_string()),
+            None => {
+                let user = self.random_user().await?;
+                (user.username, user.password)
+            }
+        };
+
         let client = self.build_client(interface)?;
         let callback = srun_utils::generate_jsonp_callback();
 
@@ -97,17 +104,17 @@ impl SrunService {
 
         let challenge = self
             .srun_client
-            .get_challenge(&client, &callback, username, userinfo.ip)
+            .get_challenge(&client, &callback, &username, userinfo.ip)
             .await?;
 
         self.srun_client
-            .login(&client, &callback, username, password, userinfo.ip, &challenge)
+            .login(&client, &callback, &username, &password, userinfo.ip, &challenge)
             .await?;
 
         info!(username = %username, ip = %userinfo.ip, "login successful (local)");
         Ok(LoginResult {
             ip: userinfo.ip,
-            username: username.to_string(),
+            username,
             mac: None,
         })
     }
@@ -136,9 +143,15 @@ impl SrunService {
         &self,
         parent: &str,
         mac: &[u8],
-        username: &str,
-        password: &str,
+        credentials: Option<(&str, &str)>,
     ) -> Result<LoginResult> {
+        let (username, password) = match credentials {
+            Some((u, p)) => (u.to_string(), p.to_string()),
+            None => {
+                let user = self.random_user().await?;
+                (user.username, user.password)
+            }
+        };
         let mac_str = format_mac(mac);
 
         // Setup macvlan
@@ -146,7 +159,7 @@ impl SrunService {
 
         // Run login, ensuring cleanup
         let result = self
-            .do_macvlan_login(username, password, &mac_str)
+            .do_macvlan_login(&username, &password, &mac_str)
             .await;
 
         // Always cleanup
@@ -175,16 +188,14 @@ impl SrunService {
         parent: &str,
         count: u32,
     ) -> Result<Vec<RandomLoginResult>> {
-        let users = self.load_users().await?;
         let mut results = Vec::with_capacity(count as usize);
 
         for _ in 0..count {
             let mac = generate_mac_address();
             let mac_str = format_mac(&mac);
-            let user = &users[rng().random_range(0..users.len())];
 
             let result = self
-                .login_macvlan(parent, &mac, &user.username, &user.password)
+                .login_macvlan(parent, &mac, None)
                 .await;
 
             results.push(RandomLoginResult {
@@ -211,6 +222,12 @@ impl SrunService {
             return Err(SrunError::Config("userinfo.json is empty".to_string()));
         }
         Ok(users)
+    }
+
+    /// Pick a random user from userinfo.json.
+    async fn random_user(&self) -> Result<User> {
+        let users = self.load_users().await?;
+        Ok(users[rng().random_range(0..users.len())].clone())
     }
 
     // ---- Internal macvlan helpers ----

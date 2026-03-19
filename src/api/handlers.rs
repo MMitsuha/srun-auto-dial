@@ -50,10 +50,11 @@ pub async fn login_local(
     State(service): State<AppState>,
     Json(req): Json<LocalLoginRequest>,
 ) -> Response {
-    match service
-        .login_local(&req.interface, &req.username, &req.password)
-        .await
-    {
+    let creds = match (&req.username, &req.password) {
+        (Some(u), Some(p)) => Some((u.as_str(), p.as_str())),
+        _ => None,
+    };
+    match service.login_local(&req.interface, creds).await {
         Ok(result) => (StatusCode::OK, Json(ApiResponse::ok(result))).into_response(),
         Err(e) => error_response(e),
     }
@@ -78,8 +79,12 @@ pub async fn login_macvlan(
         Err(e) => return error_response(e),
     };
 
+    let creds = match (&req.username, &req.password) {
+        (Some(u), Some(p)) => Some((u.as_str(), p.as_str())),
+        _ => None,
+    };
     match service
-        .login_macvlan(&req.parent_interface, &mac, &req.username, &req.password)
+        .login_macvlan(&req.parent_interface, &mac, creds)
         .await
     {
         Ok(result) => (StatusCode::OK, Json(ApiResponse::ok(result))).into_response(),

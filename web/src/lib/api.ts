@@ -66,10 +66,13 @@ export async function getStatus(iface: string) {
   return request<StatusResult>(`/api/status?interface=${encodeURIComponent(iface)}`);
 }
 
-export async function loginLocal(iface: string, username: string, password: string) {
+export async function loginLocal(iface: string, username?: string, password?: string) {
   return request<LoginResult>("/api/login/local", {
     method: "POST",
-    body: JSON.stringify({ interface: iface, username, password }),
+    body: JSON.stringify({
+      interface: iface,
+      ...(username && password ? { username, password } : {}),
+    }),
   });
 }
 
@@ -83,16 +86,15 @@ export async function logoutLocal(iface: string) {
 export async function loginMacvlan(
   parentInterface: string,
   macAddress: string,
-  username: string,
-  password: string
+  username?: string,
+  password?: string
 ) {
   return request<LoginResult>("/api/login/macvlan", {
     method: "POST",
     body: JSON.stringify({
       parent_interface: parentInterface,
       mac_address: macAddress,
-      username,
-      password,
+      ...(username && password ? { username, password } : {}),
     }),
   });
 }

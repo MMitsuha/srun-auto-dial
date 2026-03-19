@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Deserialize)]
 pub struct LocalLoginRequest {
     pub interface: String,
-    pub username: String,
-    pub password: String,
+    pub username: Option<String>,
+    pub password: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -18,8 +18,8 @@ pub struct LocalLogoutRequest {
 pub struct MacvlanLoginRequest {
     pub parent_interface: String,
     pub mac_address: String,
-    pub username: String,
-    pub password: String,
+    pub username: Option<String>,
+    pub password: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

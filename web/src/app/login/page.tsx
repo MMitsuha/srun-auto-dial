@@ -14,6 +14,7 @@ export default function LoginPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [macAddress, setMacAddress] = useState("");
+  const [useFile, setUseFile] = useState(false);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<LoginResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -24,10 +25,13 @@ export default function LoginPage() {
     setError(null);
     setResult(null);
 
+    const u = useFile ? undefined : username;
+    const p = useFile ? undefined : password;
+
     const res =
       mode === "local"
-        ? await loginLocal(iface, username, password)
-        : await loginMacvlan(iface, macAddress, username, password);
+        ? await loginLocal(iface, u, p)
+        : await loginMacvlan(iface, macAddress, u, p);
 
     setLoading(false);
     if (res.success && res.data) {
@@ -80,24 +84,44 @@ export default function LoginPage() {
           />
         )}
 
-        <InputField
-          label="Username"
-          placeholder="Enter username"
-          value={username}
-          onChange={setUsername}
-        />
+        {/* Credential source toggle */}
+        <div className="flex items-center gap-3">
+          <label className="relative inline-flex cursor-pointer items-center">
+            <input
+              type="checkbox"
+              checked={useFile}
+              onChange={(e) => setUseFile(e.target.checked)}
+              className="peer sr-only"
+            />
+            <div className="h-5 w-9 rounded-full bg-neutral-700 after:absolute after:left-[2px] after:top-[2px] after:h-4 after:w-4 after:rounded-full after:bg-white after:transition-all peer-checked:bg-white peer-checked:after:translate-x-full peer-checked:after:bg-black" />
+          </label>
+          <span className="text-sm text-neutral-400">
+            Use credentials from <code className="font-[family-name:var(--font-geist-mono)] text-neutral-300">userinfo.json</code>
+          </span>
+        </div>
 
-        <InputField
-          label="Password"
-          placeholder="Enter password"
-          value={password}
-          onChange={setPassword}
-          type="password"
-        />
+        {!useFile && (
+          <>
+            <InputField
+              label="Username"
+              placeholder="Enter username"
+              value={username}
+              onChange={setUsername}
+            />
+
+            <InputField
+              label="Password"
+              placeholder="Enter password"
+              value={password}
+              onChange={setPassword}
+              type="password"
+            />
+          </>
+        )}
 
         <button
           type="submit"
-          disabled={loading || !iface || !username || !password}
+          disabled={loading || !iface || (!useFile && (!username || !password))}
           className="rounded-lg bg-white px-5 py-2.5 text-sm font-medium text-black transition-colors hover:bg-neutral-200 disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {loading ? "Logging in..." : "Login"}

@@ -28,8 +28,8 @@ async fn local_mode(service: &SrunService) -> Result<()> {
 
     match operation {
         Operation::Login => {
-            let (username, password) = get_credentials()?;
-            let result = service.login_local(&link.name, &username, &password).await?;
+            let creds = get_credentials()?;
+            let result = service.login_local(&link.name, creds.as_ref().map(|(u, p)| (u.as_str(), p.as_str()))).await?;
             println!("Login successful, IP: {}", result.ip);
         }
         Operation::Logout => {
@@ -53,9 +53,9 @@ async fn custom_mode(service: &SrunService) -> Result<()> {
     let operation = select_operation()?;
     match operation {
         Operation::Login => {
-            let (username, password) = get_credentials()?;
+            let creds = get_credentials()?;
             let result = service
-                .login_macvlan(&link.name, &mac, &username, &password)
+                .login_macvlan(&link.name, &mac, creds.as_ref().map(|(u, p)| (u.as_str(), p.as_str())))
                 .await?;
             println!(
                 "Login successful, User: {}, IP: {}",
@@ -108,7 +108,7 @@ async fn random_mode(service: &SrunService) -> Result<()> {
 
 // ---- UI helpers ----
 
-fn get_credentials() -> Result<(String, String)> {
+fn get_credentials() -> Result<Option<(String, String)>> {
     let mode = Select::new("Select how to input user information:", vec![
         UserMode::Input,
         UserMode::Read,
@@ -122,15 +122,9 @@ fn get_credentials() -> Result<(String, String)> {
                 .with_display_mode(PasswordDisplayMode::Masked)
                 .without_confirmation()
                 .prompt()?;
-            Ok((username, password))
+            Ok(Some((username, password)))
         }
-        UserMode::Read => {
-            // Read from file is handled by service, just return first user's credentials
-            Err(crate::error::SrunError::Config(
-                "file-based login in non-random mode: use random mode or enter credentials manually"
-                    .to_string(),
-            ))
-        }
+        UserMode::Read => Ok(None),
     }
 }
 
