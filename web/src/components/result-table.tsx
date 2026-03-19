@@ -1,4 +1,4 @@
-import type { RandomLoginResult, LoginResult } from "@/lib/api";
+import { type RandomLoginResult, isLoginOk } from "@/lib/api";
 
 interface Props {
   results: RandomLoginResult[];
@@ -7,9 +7,7 @@ interface Props {
 export function ResultTable({ results }: Props) {
   if (results.length === 0) return null;
 
-  const successCount = results.filter(
-    (r) => typeof r.result !== "string"
-  ).length;
+  const successCount = results.filter((r) => isLoginOk(r.result)).length;
 
   return (
     <div className="space-y-4">
@@ -46,8 +44,8 @@ export function ResultTable({ results }: Props) {
           </thead>
           <tbody>
             {results.map((r, i) => {
-              const ok = typeof r.result !== "string";
-              const data = ok ? (r.result as LoginResult) : null;
+              const ok = isLoginOk(r.result);
+              const data = "Ok" in r.result ? r.result.Ok : null;
               return (
                 <tr
                   key={i}
@@ -64,7 +62,7 @@ export function ResultTable({ results }: Props) {
                       </span>
                     ) : (
                       <span className="text-red-400 truncate max-w-48 inline-block">
-                        {r.result as string}
+                        {"Err" in r.result ? r.result.Err : "Unknown error"}
                       </span>
                     )}
                   </td>

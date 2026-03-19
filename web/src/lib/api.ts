@@ -26,7 +26,13 @@ export interface StatusResult {
 
 export interface RandomLoginResult {
   mac: string;
-  result: LoginResult | string;
+  result: { Ok: LoginResult } | { Err: string };
+}
+
+export function isLoginOk(
+  result: RandomLoginResult["result"]
+): result is { Ok: LoginResult } {
+  return "Ok" in result;
 }
 
 async function request<T>(
