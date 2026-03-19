@@ -295,13 +295,14 @@ impl SrunService {
 }
 
 fn check_not_online(userinfo: &UserInfo) -> Result<()> {
-    if let (Some(user), Some(mac)) = (&userinfo.online_user, &userinfo.online_mac) {
-        if !user.is_empty() && !mac.is_empty() {
-            return Err(SrunError::AlreadyOnline {
-                user: user.clone(),
-                mac: mac.clone(),
-            });
-        }
+    if let (Some(user), Some(mac)) = (&userinfo.online_user, &userinfo.online_mac)
+        && !user.is_empty()
+        && !mac.is_empty()
+    {
+        return Err(SrunError::AlreadyOnline {
+            user: user.clone(),
+            mac: mac.clone(),
+        });
     }
     Ok(())
 }

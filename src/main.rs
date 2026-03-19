@@ -62,7 +62,7 @@ async fn main() -> Result<()> {
 
     // Set up rtnetlink connection
     let (connection, handle, _) =
-        rtnetlink::new_connection().map_err(|e| SrunError::Io(e))?;
+        rtnetlink::new_connection().map_err(SrunError::Io)?;
     tokio::spawn(connection);
 
     match cli.command {

@@ -47,6 +47,7 @@ fn lencode(msg: &mut [u32], key: bool) -> Vec<u8> {
     bytes
 }
 
+#[allow(clippy::identity_op)] // Obfuscated constants from original Srun JS, kept as-is
 pub fn get_xencode(msg: &str, key: &str) -> Vec<u8> {
     if msg.is_empty() {
         return Vec::new();

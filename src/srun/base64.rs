@@ -7,7 +7,7 @@ pub fn get_base64(s: &[u8]) -> String {
         return String::new();
     }
 
-    let mut out = Vec::with_capacity((len + 2) / 3 * 4);
+    let mut out = Vec::with_capacity(len.div_ceil(3) * 4);
     let imax = len - (len % 3);
 
     for i in (0..imax).step_by(3) {

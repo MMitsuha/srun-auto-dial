@@ -28,14 +28,12 @@ pub struct DhcpInfo {
 pub async fn dhcp_client(iface_name: &str) -> Result<DhcpInfo> {
     // Wrap blocking DHCP in a tokio blocking task with overall timeout
     let iface = iface_name.to_string();
-    let result = tokio::time::timeout(OVERALL_TIMEOUT, tokio::task::spawn_blocking(move || {
+    tokio::time::timeout(OVERALL_TIMEOUT, tokio::task::spawn_blocking(move || {
         dhcp_client_blocking(&iface)
     }))
     .await
     .map_err(|_| SrunError::Dhcp(format!("DHCP timeout after {}s", OVERALL_TIMEOUT.as_secs())))?
-    .map_err(|e| SrunError::Dhcp(format!("DHCP task failed: {}", e)))?;
-
-    result
+    .map_err(|e| SrunError::Dhcp(format!("DHCP task failed: {}", e)))?
 }
 
 fn dhcp_client_blocking(iface_name: &str) -> Result<DhcpInfo> {
@@ -102,7 +100,7 @@ fn dhcp_client_blocking(iface_name: &str) -> Result<DhcpInfo> {
 
     let offered_ip = offer_msg.yiaddr();
     let server_id = match offer_msg.opts().get(OptionCode::ServerIdentifier) {
-        Some(DhcpOption::ServerIdentifier(ip)) => Ipv4Addr::from(*ip),
+        Some(DhcpOption::ServerIdentifier(ip)) => *ip,
         _ => {
             return Err(SrunError::Dhcp(
                 "missing Server Identifier in Offer".to_string(),
@@ -150,7 +148,7 @@ fn dhcp_client_blocking(iface_name: &str) -> Result<DhcpInfo> {
     })?;
 
     let netmask = match ack_msg.opts().get(OptionCode::SubnetMask) {
-        Some(DhcpOption::SubnetMask(mask)) => Ipv4Addr::from(*mask),
+        Some(DhcpOption::SubnetMask(mask)) => *mask,
         _ => Ipv4Addr::new(255, 255, 255, 0),
     };
     let gateway = match ack_msg.opts().get(OptionCode::Router) {
@@ -262,10 +260,10 @@ fn recv_dhcp_message(rx: &mut Box<dyn DataLinkReceiver>, msg_type: MessageType) 
                         {
                             continue;
                         }
-                        if let Ok(msg) = Message::decode(&mut Decoder::new(udp.payload())) {
-                            if msg.opts().msg_type() == Some(msg_type) {
-                                return Some(msg);
-                            }
+                        if let Ok(msg) = Message::decode(&mut Decoder::new(udp.payload()))
+                            && msg.opts().msg_type() == Some(msg_type)
+                        {
+                            return Some(msg);
                         }
                     }
                 }
