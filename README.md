@@ -1,6 +1,6 @@
 # srun-auto-dial
 
-深澜（Srun）校园网认证自动拨号工具，支持 TUI 交互模式和 REST API 服务器模式。
+深澜（Srun）校园网认证自动拨号工具，支持 TUI 交互模式、REST API 服务器和 Web 管理界面。
 
 支持三种 MAC 地址模式：本机网卡、自定义 MAC（macvlan）、随机 MAC 批量拨号。
 
@@ -8,7 +8,7 @@
 
 ## 快速开始
 
-### 编译
+### 编译后端
 
 ```bash
 cargo build --release
@@ -32,6 +32,22 @@ sudo ./target/release/srun-auto-dial server
 
 ```bash
 sudo ./target/release/srun-auto-dial server --port 8080 --host 0.0.0.0
+```
+
+### Web 前端
+
+```bash
+cd web
+bun install
+bun run dev
+```
+
+访问 `http://localhost:3000` 打开管理界面。需要后端 API 服务器已在运行。
+
+通过环境变量配置 API 地址：
+
+```bash
+NEXT_PUBLIC_API_URL=http://192.168.1.1:3000 bun run dev
 ```
 
 ### Docker
@@ -75,6 +91,16 @@ port = 3000
 ```bash
 srun-auto-dial -c /path/to/srun.toml tui
 ```
+
+## Web 管理界面
+
+基于 Next.js + TypeScript + Tailwind CSS 构建，采用 nextjs.org 风格的暗色极简设计。
+
+| 页面 | 路径 | 功能 |
+|------|------|------|
+| Dashboard | `/` | 网卡选择、在线状态查看、快速登录/登出 |
+| Login | `/login` | Local / Macvlan 模式登录表单 |
+| Random | `/random` | 随机 MAC 批量拨号，结果表格展示 |
 
 ## REST API
 
@@ -134,15 +160,20 @@ srun-auto-dial -vvv tui     # trace
 ## 项目结构
 
 ```
-src/
-├── main.rs        # clap 入口
-├── error.rs       # 错误类型（thiserror）
-├── config.rs      # TOML 配置
-├── service.rs     # 核心业务逻辑
-├── srun/          # Srun 协议实现
-├── net/           # 网络操作（netlink + DHCP）
-├── tui/           # 交互式 TUI
-└── api/           # REST API（axum）
+├── src/               # Rust 后端
+│   ├── main.rs        # clap 入口
+│   ├── error.rs       # 错误类型（thiserror）
+│   ├── config.rs      # TOML 配置
+│   ├── service.rs     # 核心业务逻辑
+│   ├── srun/          # Srun 协议实现
+│   ├── net/           # 网络操作（netlink + DHCP）
+│   ├── tui/           # 交互式 TUI
+│   └── api/           # REST API（axum）
+└── web/               # Next.js 前端
+    └── src/
+        ├── app/       # 页面（Dashboard / Login / Random）
+        ├── components/# UI 组件
+        └── lib/       # API 客户端
 ```
 
 ## License

@@ -9,7 +9,7 @@ use axum::routing::{get, post};
 use rtnetlink::Handle;
 use std::sync::Arc;
 use tokio::net::TcpListener;
-use tower_http::trace::TraceLayer;
+use tower_http::{cors::CorsLayer, trace::TraceLayer};
 use tracing::info;
 
 pub async fn run(config: Arc<Config>, handle: Handle) -> Result<()> {
@@ -30,6 +30,7 @@ pub async fn run(config: Arc<Config>, handle: Handle) -> Result<()> {
             api_key_middleware(req, next, api_key.clone())
         }))
         .layer(TraceLayer::new_for_http())
+        .layer(CorsLayer::permissive())
         .with_state(service);
 
     let addr = format!("{}:{}", config.server.host, config.server.port);
