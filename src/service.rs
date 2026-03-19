@@ -3,6 +3,7 @@ use crate::error::{Result, SrunError};
 use crate::net::{self, DhcpInfo, Link};
 use crate::srun::{SrunClient, UserInfo, utils as srun_utils};
 use pnet::ipnetwork::{IpNetwork, Ipv4Network};
+use std::collections::HashMap;
 use rand::{Rng, rng};
 use reqwest::Client;
 use rtnetlink::Handle;
@@ -183,20 +184,37 @@ impl SrunService {
     }
 
     /// Batch login with random MACs, reading users from userinfo.json.
+    /// Each account is used at most 3 times to avoid kicking off previous sessions.
     pub async fn login_random(
         &self,
         parent: &str,
         count: u32,
     ) -> Result<Vec<RandomLoginResult>> {
+        const MAX_LOGIN_PER_USER: u32 = 3;
+
+        let users = self.load_users().await?;
+        let mut usage: HashMap<String, u32> = HashMap::new();
         let mut results = Vec::with_capacity(count as usize);
 
         for _ in 0..count {
+            let available: Vec<_> = users
+                .iter()
+                .filter(|u| *usage.get(&u.username).unwrap_or(&0) < MAX_LOGIN_PER_USER)
+                .collect();
+
+            if available.is_empty() {
+                tracing::warn!("all users have reached max login count ({MAX_LOGIN_PER_USER}), stopping");
+                break;
+            }
+
+            let user = available[rng().random_range(0..available.len())];
+            *usage.entry(user.username.clone()).or_insert(0) += 1;
+
             let mac = generate_mac_address();
             let mac_str = format_mac(&mac);
+            let creds = Some((user.username.as_str(), user.password.as_str()));
 
-            let result = self
-                .login_macvlan(parent, &mac, None)
-                .await;
+            let result = self.login_macvlan(parent, &mac, creds).await;
 
             results.push(RandomLoginResult {
                 mac: mac_str,

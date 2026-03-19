@@ -131,6 +131,8 @@ srun-auto-dial -c /path/to/srun.toml tui
 | POST | `/api/login/random` | 随机 MAC 批量登录 |
 
 > `login/local` 和 `login/macvlan` 的 `username`/`password` 字段为可选。省略时自动从 `userinfo.json` 中随机选取一组凭据。
+>
+> `login/random` 模式下每个账号最多使用 3 次，避免顶掉已有登录。当所有账号用满时提前停止。
 
 ### 请求示例
 
