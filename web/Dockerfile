@@ -11,7 +11,7 @@ COPY . .
 ARG NEXT_PUBLIC_API_URL=http://127.0.0.1:3000
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 
-RUN bun run build
+RUN mkdir -p public && bun run build
 
 # ---- Runtime ----
 FROM oven/bun:1-slim AS runner
