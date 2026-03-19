@@ -109,27 +109,34 @@ srun-auto-dial -c /path/to/srun.toml tui
 | GET | `/api/health` | 健康检查 |
 | GET | `/api/interfaces` | 列出可用网络接口 |
 | GET | `/api/status?interface=eth0` | 查询在线状态 |
-| POST | `/api/login/local` | 本机网卡登录 |
+| POST | `/api/login/local` | 本机网卡登录（凭据可选） |
 | POST | `/api/logout/local` | 本机网卡登出 |
-| POST | `/api/login/macvlan` | 自定义 MAC 登录（macvlan） |
+| POST | `/api/login/macvlan` | 自定义 MAC 登录（凭据可选） |
 | POST | `/api/logout/macvlan` | macvlan 登出 |
 | POST | `/api/login/random` | 随机 MAC 批量登录 |
+
+> `login/local` 和 `login/macvlan` 的 `username`/`password` 字段为可选。省略时自动从 `userinfo.json` 中随机选取一组凭据。
 
 ### 请求示例
 
 ```bash
-# 登录
+# 登录（手动指定凭据）
 curl -X POST http://127.0.0.1:3000/api/login/local \
   -H "Content-Type: application/json" \
   -d '{"interface":"eth0","username":"user","password":"pass"}'
 
+# 登录（使用 userinfo.json 中的凭据）
+curl -X POST http://127.0.0.1:3000/api/login/local \
+  -H "Content-Type: application/json" \
+  -d '{"interface":"eth0"}'
+
 # 查询状态
 curl "http://127.0.0.1:3000/api/status?interface=eth0"
 
-# 自定义 MAC 登录
+# 自定义 MAC 登录（凭据可选）
 curl -X POST http://127.0.0.1:3000/api/login/macvlan \
   -H "Content-Type: application/json" \
-  -d '{"parent_interface":"eth0","mac_address":"aa:bb:cc:dd:ee:ff","username":"user","password":"pass"}'
+  -d '{"parent_interface":"eth0","mac_address":"aa:bb:cc:dd:ee:ff"}'
 
 # 随机 MAC 批量登录
 curl -X POST http://127.0.0.1:3000/api/login/random \
