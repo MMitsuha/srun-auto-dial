@@ -52,13 +52,28 @@ NEXT_PUBLIC_API_URL=http://192.168.1.1:3000 bun run dev
 
 ### Docker
 
+**后端 API 服务器：**
+
 ```bash
 docker run --rm --net=host --cap-add=NET_ADMIN --cap-add=NET_RAW \
   -v ./srun.toml:/etc/srun-auto-dial/srun.toml \
   ghcr.io/<owner>/srun-auto-dial
 ```
 
-> Docker 镜像默认以 server 模式运行。需要 `--net=host` 以访问宿主机网络接口。
+> 需要 `--net=host` 以访问宿主机网络接口。默认以 server 模式运行，监听 3000 端口。
+
+**Web 前端：**
+
+```bash
+docker run --rm -p 3001:3000 \
+  ghcr.io/<owner>/srun-auto-dial-web
+```
+
+构建时可通过 `--build-arg` 指定后端 API 地址：
+
+```bash
+docker build --build-arg NEXT_PUBLIC_API_URL=http://192.168.1.1:3000 -t srun-web ./web
+```
 
 ## 配置
 
