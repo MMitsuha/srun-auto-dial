@@ -1,0 +1,20 @@
+# Build
+/target/
+
+# Config (may contain credentials)
+srun.toml
+userinfo.json
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Claude Code
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db

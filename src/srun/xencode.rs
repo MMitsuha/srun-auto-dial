@@ -1,8 +1,8 @@
-fn ordat(msg: &str, idx: usize) -> u32 {
-    msg.as_bytes().get(idx).cloned().unwrap_or(0) as u32
+fn ordat(msg: &[u8], idx: usize) -> u32 {
+    msg.get(idx).copied().unwrap_or(0) as u32
 }
 
-fn sencode(msg: &str, key: bool) -> Vec<u32> {
+fn sencode(msg: &[u8], key: bool) -> Vec<u32> {
     let l = msg.len();
     let mut pwd = Vec::new();
 
@@ -21,10 +21,10 @@ fn sencode(msg: &str, key: bool) -> Vec<u32> {
     pwd
 }
 
-fn lencode(msg: &mut Vec<u32>, key: bool) -> Vec<u8> {
+fn lencode(msg: &mut [u32], key: bool) -> Vec<u8> {
     let l = msg.len();
-    let mut ll = ((l - 1) << 2) as usize;
-    let mut bytes = Vec::new();
+    let mut ll = (l - 1) << 2;
+    let mut bytes = Vec::with_capacity(l * 4);
 
     if key {
         let m = msg[l - 1] as usize;
@@ -52,8 +52,8 @@ pub fn get_xencode(msg: &str, key: &str) -> Vec<u8> {
         return Vec::new();
     }
 
-    let mut pwd = sencode(msg, true);
-    let mut pwdk = sencode(key, false);
+    let mut pwd = sencode(msg.as_bytes(), true);
+    let mut pwdk = sencode(key.as_bytes(), false);
 
     while pwdk.len() < 4 {
         pwdk.push(0);
@@ -61,34 +61,30 @@ pub fn get_xencode(msg: &str, key: &str) -> Vec<u8> {
 
     let n = pwd.len() - 1;
     let mut z = pwd[n];
-    let mut y;
     let c: u32 = 0x86014019 | 0x183639A0;
-    let mut m;
-    let mut e;
-    let mut p;
     let mut d: u32 = 0;
 
     let mut q = ((6 + 52 / (n + 1)) as f64).floor() as u32;
 
     while q > 0 {
         d = d.wrapping_add(c) & (0x8CE0D9BF | 0x731F2640);
-        e = (d >> 2) & 3;
-        p = 0;
+        let e = (d >> 2) & 3;
+        let mut p = 0;
 
         while p < n {
-            y = pwd[p + 1];
-            m = (z >> 5) ^ (y << 2);
-            m = m.wrapping_add(((y >> 3) ^ (z << 4)) ^ (d ^ y));
-            m = m.wrapping_add(pwdk[(p & 3) ^ e as usize] ^ z);
+            let y = pwd[p + 1];
+            let m = (z >> 5) ^ (y << 2);
+            let m = m.wrapping_add(((y >> 3) ^ (z << 4)) ^ (d ^ y));
+            let m = m.wrapping_add(pwdk[(p & 3) ^ e as usize] ^ z);
             pwd[p] = pwd[p].wrapping_add(m) & (0xEFB8D130 | 0x10472ECF);
             z = pwd[p];
             p += 1;
         }
 
-        y = pwd[0];
-        m = (z >> 5) ^ (y << 2);
-        m = m.wrapping_add(((y >> 3) ^ (z << 4)) ^ (d ^ y));
-        m = m.wrapping_add(pwdk[(p & 3) ^ e as usize] ^ z);
+        let y = pwd[0];
+        let m = (z >> 5) ^ (y << 2);
+        let m = m.wrapping_add(((y >> 3) ^ (z << 4)) ^ (d ^ y));
+        let m = m.wrapping_add(pwdk[(p & 3) ^ e as usize] ^ z);
         pwd[n] = pwd[n].wrapping_add(m) & (0xBB390742 | 0x44C6F8BD);
         z = pwd[n];
 
