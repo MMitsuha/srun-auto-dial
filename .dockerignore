@@ -1,0 +1,13 @@
+target/
+.git/
+.github/
+.claude/
+.vscode/
+.idea/
+
+srun.toml
+userinfo.json
+
+*.md
+!README.md
+LICENSE

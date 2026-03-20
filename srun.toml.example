@@ -1,0 +1,8 @@
+portal_url = "http://portal.hdu.edu.cn"
+ac_id = "1"
+userinfo_path = "userinfo.json"
+
+[server]
+host = "127.0.0.1"
+port = 3000
+# api_key = "your-secret-key"
