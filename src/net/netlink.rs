@@ -1,7 +1,7 @@
 use crate::error::{Result, SrunError};
 use futures_util::stream::TryStreamExt;
 use netlink_packet_route::link::LinkAttribute;
-use pnet::ipnetwork::{IpNetwork, Ipv4Network};
+use pnet::ipnetwork::IpNetwork;
 use rtnetlink::{
     Handle, LinkMacVlan, LinkUnspec, RouteMessageBuilder, packet_route::link::MacVlanMode,
 };
@@ -99,9 +99,8 @@ pub async fn add_default_route(
     source: Ipv4Addr,
 ) -> Result<()> {
     let index = get_link_index(&handle, link_name).await?;
-    let dest = Ipv4Network::new(Ipv4Addr::new(0, 0, 0, 0), 0).expect("0.0.0.0/0 is always valid");
     let route = RouteMessageBuilder::<Ipv4Addr>::new()
-        .destination_prefix(dest.ip(), dest.prefix())
+        .destination_prefix(Ipv4Addr::UNSPECIFIED, 0)
         .gateway(gateway)
         .output_interface(index)
         .pref_source(source)

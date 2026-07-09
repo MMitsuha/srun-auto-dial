@@ -85,32 +85,45 @@ async fn random_mode(service: &SrunService) -> Result<()> {
         .with_default("1")
         .prompt()?
         .parse()
-        .map_err(|_| crate::error::SrunError::Config("invalid number".to_string()))?;
+        .map_err(|_| crate::error::SrunError::Validation {
+            field: "count",
+            message: "count must be a whole number between 1 and 100.".to_string(),
+        })?;
+    if !(1..=100).contains(&count) {
+        return Err(crate::error::SrunError::Validation {
+            field: "count",
+            message: "count must be between 1 and 100.".to_string(),
+        });
+    }
 
     let userinfo_path = select_userinfo_path("Select the user-info JSON to read:")?;
 
-    let results = service
+    let batch = service
         .login_random(&link.name, count, Some(&userinfo_path))
         .await?;
 
     println!("\n--- Results ---");
-    for r in &results {
-        match &r.result {
-            Ok(login) => println!(
+    for result in &batch.results {
+        match (&result.data, &result.error) {
+            (Some(login), _) => println!(
                 "MAC: {} -> Login OK, User: {}, IP: {}",
-                r.mac, login.username, login.ip
+                result.mac, login.username, login.ip
             ),
-            Err(e) => println!("MAC: {} -> Failed: {}", r.mac, e),
+            (_, Some(error)) => println!(
+                "MAC: {} -> Failed [{}]: {}",
+                result.mac, error.code, error.message
+            ),
+            _ => println!("MAC: {} -> Failed: unknown result", result.mac),
         }
     }
 
-    let success_count = results.iter().filter(|r| r.result.is_ok()).count();
     println!(
-        "\nTotal: {}, Success: {}, Failed: {}",
-        results.len(),
-        success_count,
-        results.len() - success_count
+        "\nRequested: {}, Attempted: {}, Success: {}, Failed: {}",
+        batch.requested, batch.attempted, batch.succeeded, batch.failed
     );
+    if let Some(reason) = batch.stopped_reason {
+        println!("{reason}");
+    }
     Ok(())
 }
 
@@ -160,12 +173,7 @@ fn select_userinfo_path(prompt: &str) -> Result<String> {
         .into_iter()
         .flatten()
         .filter_map(|entry| entry.ok())
-        .filter(|entry| {
-            entry
-                .file_type()
-                .map(|t| t.is_file())
-                .unwrap_or(false)
-        })
+        .filter(|entry| entry.file_type().map(|t| t.is_file()).unwrap_or(false))
         .filter_map(|entry| entry.file_name().into_string().ok())
         .filter(|name| name.to_ascii_lowercase().ends_with(".json"))
         .collect();
