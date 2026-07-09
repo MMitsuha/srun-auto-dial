@@ -13,19 +13,21 @@ env:
 
 jobs:
   check:
-    name: Check & Clippy
+    name: Rust checks
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: clippy
+          components: clippy, rustfmt
 
       - uses: Swatinem/rust-cache@v2
 
-      - run: cargo check
-      - run: cargo clippy -- -D warnings
+      - run: cargo fmt --all -- --check
+      - run: cargo check --locked --all-targets
+      - run: cargo test --locked --all-targets
+      - run: cargo clippy --locked --all-targets -- -D warnings
 
   build:
     name: Build
@@ -38,7 +40,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - run: cargo build --release
+      - run: cargo build --release --locked
 
       - uses: actions/upload-artifact@v4
         with:
@@ -53,7 +55,16 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
 
-      - run: bun install
+      - run: bun install --frozen-lockfile
+        working-directory: web
+
+      - run: bun run lint
+        working-directory: web
+
+      - run: bun run typecheck
+        working-directory: web
+
+      - run: bun test
         working-directory: web
 
       - run: bun run build
