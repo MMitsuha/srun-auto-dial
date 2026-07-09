@@ -1,83 +1,127 @@
-import { type RandomLoginResult, isLoginOk } from "@/lib/api";
+import type { RandomLoginAttempt, RandomLoginSummary } from "@/lib/api";
+import { Alert, Card } from "@/components/ui";
 
 interface Props {
-  results: RandomLoginResult[];
+  summary: RandomLoginSummary | null;
 }
 
-export function ResultTable({ results }: Props) {
-  if (results.length === 0) return null;
+function attemptError(attempt: RandomLoginAttempt) {
+  return attempt.error?.message || "The login attempt failed without an error message.";
+}
 
-  const successCount = results.filter((r) => isLoginOk(r.result)).length;
+export function ResultTable({ summary }: Props) {
+  if (!summary) return null;
 
   return (
-    <div className="space-y-4">
-      <div className="flex gap-4 text-sm">
-        <span className="text-neutral-400">
-          Total: <span className="text-white">{results.length}</span>
-        </span>
-        <span className="text-neutral-400">
-          Success: <span className="text-green-400">{successCount}</span>
-        </span>
-        <span className="text-neutral-400">
-          Failed:{" "}
-          <span className="text-red-400">{results.length - successCount}</span>
-        </span>
+    <section aria-labelledby="batch-results-title" className="space-y-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h2 id="batch-results-title" className="text-lg font-semibold text-white">
+            Batch results
+          </h2>
+          <p className="mt-1 text-sm text-neutral-500">
+            Attempted {summary.attempted} of {summary.requested} requested connections.
+          </p>
+        </div>
+        <dl className="grid grid-cols-3 gap-2 text-center">
+          <Metric label="Attempted" value={summary.attempted} />
+          <Metric label="Succeeded" value={summary.succeeded} tone="success" />
+          <Metric label="Failed" value={summary.failed} tone="error" />
+        </dl>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-neutral-800">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-neutral-800 bg-neutral-900/50">
-              <th className="px-4 py-3 text-left font-medium text-neutral-400">
-                MAC Address
-              </th>
-              <th className="px-4 py-3 text-left font-medium text-neutral-400">
-                Status
-              </th>
-              <th className="px-4 py-3 text-left font-medium text-neutral-400">
-                User
-              </th>
-              <th className="px-4 py-3 text-left font-medium text-neutral-400">
-                IP
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {results.map((r, i) => {
-              const ok = isLoginOk(r.result);
-              const data = "Ok" in r.result ? r.result.Ok : null;
-              return (
-                <tr
-                  key={i}
-                  className="border-b border-neutral-800/50 last:border-0"
-                >
-                  <td className="px-4 py-3 font-[family-name:var(--font-geist-mono)] text-neutral-300">
-                    {r.mac}
-                  </td>
-                  <td className="px-4 py-3">
-                    {ok ? (
-                      <span className="inline-flex items-center gap-1.5 text-green-400">
-                        <span className="h-1.5 w-1.5 rounded-full bg-green-400" />
-                        OK
-                      </span>
-                    ) : (
-                      <span className="text-red-400 truncate max-w-48 inline-block">
-                        {"Err" in r.result ? r.result.Err : "Unknown error"}
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-neutral-300">
-                    {data?.username || "-"}
-                  </td>
-                  <td className="px-4 py-3 font-[family-name:var(--font-geist-mono)] text-neutral-300">
-                    {data?.ip || "-"}
-                  </td>
+      {summary.stopped_reason && (
+        <Alert variant="warning" title="Batch stopped early">
+          {summary.stopped_reason}
+        </Alert>
+      )}
+
+      {summary.results.length === 0 ? (
+        <Alert variant="info" title="No attempts were completed">
+          The server returned an empty batch result.
+        </Alert>
+      ) : (
+        <>
+          <Card className="hidden overflow-x-auto sm:block" as="div">
+            <table className="w-full min-w-[680px] text-left text-sm">
+              <caption className="sr-only">Individual random MAC login results</caption>
+              <thead className="border-b border-white/10 bg-white/[0.035] text-xs uppercase tracking-[0.1em] text-neutral-500">
+                <tr>
+                  <th scope="col" className="px-5 py-3.5 font-medium">MAC address</th>
+                  <th scope="col" className="px-5 py-3.5 font-medium">Status</th>
+                  <th scope="col" className="px-5 py-3.5 font-medium">User</th>
+                  <th scope="col" className="px-5 py-3.5 font-medium">IP address</th>
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+              </thead>
+              <tbody className="divide-y divide-white/[0.07]">
+                {summary.results.map((attempt, index) => (
+                  <AttemptRow key={`${attempt.mac}-${index}`} attempt={attempt} />
+                ))}
+              </tbody>
+            </table>
+          </Card>
+
+          <div className="grid gap-3 sm:hidden">
+            {summary.results.map((attempt, index) => (
+              <AttemptCard key={`${attempt.mac}-${index}`} attempt={attempt} />
+            ))}
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
+function Metric({ label, value, tone }: { label: string; value: number; tone?: "success" | "error" }) {
+  return (
+    <div className="min-w-20 rounded-xl border border-white/10 bg-white/[0.035] px-3 py-2">
+      <dt className="text-[10px] uppercase tracking-wider text-neutral-500">{label}</dt>
+      <dd className={`mt-0.5 font-mono text-sm ${tone === "success" ? "text-emerald-300" : tone === "error" ? "text-red-300" : "text-white"}`}>
+        {value}
+      </dd>
     </div>
+  );
+}
+
+function AttemptRow({ attempt }: { attempt: RandomLoginAttempt }) {
+  return (
+    <tr className="align-top text-neutral-300">
+      <td className="px-5 py-4 font-mono text-xs">{attempt.mac}</td>
+      <td className="max-w-xs px-5 py-4">
+        {attempt.success ? (
+          <span className="inline-flex items-center gap-2 font-medium text-emerald-300">
+            <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> Success
+          </span>
+        ) : (
+          <div>
+            <span className="font-medium text-red-300">Failed</span>
+            <p className="mt-1 break-words text-xs leading-5 text-red-200/70">{attemptError(attempt)}</p>
+          </div>
+        )}
+      </td>
+      <td className="px-5 py-4">{attempt.data?.username || "—"}</td>
+      <td className="px-5 py-4 font-mono text-xs">{attempt.data?.ip || "—"}</td>
+    </tr>
+  );
+}
+
+function AttemptCard({ attempt }: { attempt: RandomLoginAttempt }) {
+  return (
+    <Card className="p-4" as="div">
+      <div className="flex items-start justify-between gap-3">
+        <p className="break-all font-mono text-xs text-neutral-300">{attempt.mac}</p>
+        <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${attempt.success ? "bg-emerald-500/15 text-emerald-300" : "bg-red-500/15 text-red-300"}`}>
+          {attempt.success ? "Success" : "Failed"}
+        </span>
+      </div>
+      {attempt.success ? (
+        <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
+          <div><dt className="text-xs text-neutral-500">User</dt><dd className="mt-1 break-all text-neutral-200">{attempt.data?.username || "—"}</dd></div>
+          <div><dt className="text-xs text-neutral-500">IP address</dt><dd className="mt-1 break-all font-mono text-xs text-neutral-200">{attempt.data?.ip || "—"}</dd></div>
+        </dl>
+      ) : (
+        <p className="mt-3 break-words text-sm leading-5 text-red-200/75">{attemptError(attempt)}</p>
+      )}
+    </Card>
   );
 }

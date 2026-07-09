@@ -1,21 +1,49 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
 import {
   loginLocal,
   loginMacvlan,
   loginRandom,
+  type ApiError,
   type LoginResult,
-  type RandomLoginResult,
+  type RandomLoginSummary,
 } from "@/lib/api";
+import {
+  normalizeMacAddress,
+  normalizeServerPath,
+  parseLoginCount,
+  validateUsername,
+} from "@/lib/validation";
 import { InterfaceSelect } from "@/components/interface-select";
 import { ResultTable } from "@/components/result-table";
+import {
+  Alert,
+  Button,
+  Card,
+  PageHeader,
+  SectionHeading,
+  SegmentedControl,
+  TextField,
+} from "@/components/ui";
 
 type Mode = "local" | "macvlan" | "random";
 
+const modes = [
+  { value: "local" as const, label: "Local" },
+  { value: "macvlan" as const, label: "Macvlan" },
+  { value: "random" as const, label: "Random batch" },
+];
+
+interface FieldErrors {
+  username?: string;
+  password?: string;
+  macAddress?: string;
+  count?: string;
+}
+
 export default function LoginPage() {
-  const router = useRouter();
   const [mode, setMode] = useState<Mode>("local");
   const [iface, setIface] = useState("");
   const [username, setUsername] = useState("");
@@ -26,255 +54,329 @@ export default function LoginPage() {
   const [count, setCount] = useState("1");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<LoginResult | null>(null);
-  const [randomResults, setRandomResults] = useState<RandomLoginResult[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const [batchSummary, setBatchSummary] = useState<RandomLoginSummary | null>(null);
+  const [error, setError] = useState<ApiError | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const controllerRef = useRef<AbortController | null>(null);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  useEffect(() => () => controllerRef.current?.abort(), []);
+
+  const changeMode = (nextMode: Mode) => {
+    controllerRef.current?.abort();
+    setMode(nextMode);
+    setResult(null);
+    setBatchSummary(null);
+    setError(null);
+    setFieldErrors({});
+  };
+
+  const clearFieldError = (field: keyof FieldErrors) => {
+    setFieldErrors((current) => (current[field] ? { ...current, [field]: undefined } : current));
+  };
+
+  const showActionError = (actionError: ApiError) => {
+    setError(actionError);
+    const fieldMap: Record<string, keyof FieldErrors | undefined> = {
+      username: "username",
+      password: "password",
+      mac_address: "macAddress",
+      count: "count",
+    };
+    const field = actionError.field ? fieldMap[actionError.field] : undefined;
+    if (field) setFieldErrors((current) => ({ ...current, [field]: actionError.message }));
+  };
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!iface || loading) return;
+
+    const nextErrors: FieldErrors = {};
+    let normalizedMac: string | undefined;
+    let parsedCount: number | undefined;
+    let normalizedUsername: string | undefined;
+
+    if (mode === "macvlan") {
+      const mac = normalizeMacAddress(macAddress);
+      normalizedMac = mac.value;
+      nextErrors.macAddress = mac.error;
+    }
+    if (mode === "random") {
+      const parsed = parseLoginCount(count);
+      parsedCount = parsed.value;
+      nextErrors.count = parsed.error;
+    } else if (!useFile) {
+      const user = validateUsername(username);
+      normalizedUsername = user.value;
+      nextErrors.username = user.error;
+      if (!password) nextErrors.password = "Enter a password.";
+    }
+
+    setFieldErrors(nextErrors);
+    if (Object.values(nextErrors).some(Boolean)) return;
+
+    if (normalizedMac) setMacAddress(normalizedMac);
+    if (normalizedUsername) setUsername(normalizedUsername);
+    const path = normalizeServerPath(userinfoPath);
+    const controller = new AbortController();
+    controllerRef.current?.abort();
+    controllerRef.current = controller;
     setLoading(true);
     setError(null);
     setResult(null);
-    setRandomResults([]);
+    setBatchSummary(null);
 
-    if (mode === "random") {
-      const n = parseInt(count, 10);
-      if (isNaN(n) || n < 1 || n > 100) {
-        setError("Count must be between 1 and 100");
-        setLoading(false);
+    try {
+      if (mode === "random") {
+        const response = await loginRandom(iface, parsedCount!, path, { signal: controller.signal });
+        if (controller.signal.aborted) return;
+        if (response.ok) setBatchSummary(response.data);
+        else showActionError(response.error);
         return;
       }
-      const path = userinfoPath.trim() || undefined;
-      const res = await loginRandom(iface, n, path);
-      setLoading(false);
-      if (res.success && res.data) {
-        setRandomResults(res.data);
-      } else {
-        setError(res.error || "Random login failed");
-      }
-      return;
-    }
 
-    const u = useFile ? undefined : username;
-    const p = useFile ? undefined : password;
-    const path = useFile ? userinfoPath.trim() || undefined : undefined;
+      const response =
+        mode === "local"
+          ? await loginLocal(
+              iface,
+              useFile ? undefined : normalizedUsername,
+              useFile ? undefined : password,
+              useFile ? path : undefined,
+              { signal: controller.signal },
+            )
+          : await loginMacvlan(
+              iface,
+              normalizedMac!,
+              useFile ? undefined : normalizedUsername,
+              useFile ? undefined : password,
+              useFile ? path : undefined,
+              { signal: controller.signal },
+            );
 
-    const res =
-      mode === "local"
-        ? await loginLocal(iface, u, p, path)
-        : await loginMacvlan(iface, macAddress, u, p, path);
-
-    setLoading(false);
-    if (res.success && res.data) {
-      setResult(res.data);
-    } else {
-      setError(res.error || "Login failed");
+      if (controller.signal.aborted) return;
+      if (response.ok) setResult(response.data);
+      else showActionError(response.error);
+    } finally {
+      if (!controller.signal.aborted) setLoading(false);
     }
   };
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Login</h1>
-        <p className="mt-2 text-sm text-neutral-400">
-          Authenticate to the campus network.
-        </p>
-      </div>
+    <div className="space-y-8 sm:space-y-10">
+      <PageHeader
+        eyebrow="Authentication"
+        title="Connect to the network"
+        description="Start a local session, use a specific macvlan identity, or run a controlled batch of random MAC logins."
+      />
 
-      {/* Mode toggle */}
-      <div className="flex gap-1 rounded-lg border border-neutral-800 bg-neutral-900/50 p-1 w-fit">
-        {(["local", "macvlan", "random"] as Mode[]).map((m) => (
-          <button
-            key={m}
-            onClick={() => {
-              setMode(m);
-              setResult(null);
-              setRandomResults([]);
-              setError(null);
-            }}
-            className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${
-              mode === m
-                ? "bg-neutral-800 text-white"
-                : "text-neutral-400 hover:text-white"
-            }`}
-          >
-            {m === "local" ? "Local" : m === "macvlan" ? "Macvlan" : "Random"}
-          </button>
-        ))}
-      </div>
-
-      <form onSubmit={handleSubmit} className="space-y-5">
-        <InterfaceSelect
-          value={iface}
-          onChange={setIface}
-          label={mode === "local" ? "Network Interface" : "Parent Interface"}
-        />
-
-        {mode === "macvlan" && (
-          <InputField
-            label="MAC Address"
-            placeholder="AA:BB:CC:DD:EE:FF"
-            value={macAddress}
-            onChange={setMacAddress}
-            mono
+      <Card className="overflow-hidden">
+        <div className="border-b border-white/10 p-5 sm:p-6">
+          <SectionHeading
+            title="Connection method"
+            description="Choose how this session should reach the campus portal."
           />
-        )}
+          <div className="mt-4">
+            <SegmentedControl
+              legend="Connection method"
+              value={mode}
+              options={modes}
+              onChange={changeMode}
+              disabled={loading}
+            />
+          </div>
+        </div>
 
-        {mode === "random" ? (
-          <>
-            <div className="flex flex-col gap-2">
-              <label className="text-sm text-neutral-400">Count (1-100)</label>
-              <input
+        <form onSubmit={handleSubmit} noValidate className="space-y-6 p-5 sm:p-6">
+          <InterfaceSelect
+            value={iface}
+            onChange={setIface}
+            label={mode === "local" ? "Network interface" : "Parent interface"}
+            disabled={loading}
+          />
+
+          {mode === "macvlan" && (
+            <TextField
+              label="MAC address"
+              name="mac-address"
+              placeholder="AA:BB:CC:DD:EE:FF"
+              value={macAddress}
+              onChange={(event) => {
+                setMacAddress(event.target.value);
+                clearFieldError("macAddress");
+              }}
+              onBlur={() => {
+                if (macAddress) {
+                  setFieldErrors((current) => ({
+                    ...current,
+                    macAddress: normalizeMacAddress(macAddress).error,
+                  }));
+                }
+              }}
+              autoComplete="off"
+              spellCheck={false}
+              disabled={loading}
+              error={fieldErrors.macAddress}
+              hint="Common colon, hyphen, and compact formats are accepted."
+              mono
+            />
+          )}
+
+          {mode === "random" ? (
+            <div className="grid gap-5 sm:grid-cols-2">
+              <TextField
+                label="Connection count"
+                name="count"
                 type="number"
                 min={1}
                 max={100}
+                step={1}
                 value={count}
-                onChange={(e) => setCount(e.target.value)}
-                className="rounded-lg border border-neutral-800 bg-neutral-900 px-4 py-2.5 text-sm text-white placeholder-neutral-600 outline-none transition-colors focus:border-neutral-600 w-32 font-[family-name:var(--font-geist-mono)]"
-              />
-            </div>
-            <InputField
-              label="User-info JSON path"
-              placeholder="userinfo.json"
-              value={userinfoPath}
-              onChange={setUserinfoPath}
-              mono
-            />
-            <p className="text-xs text-neutral-500">
-              Path is resolved on the server. Each line has its own JSON — do
-              not mix them.
-            </p>
-          </>
-        ) : (
-          <>
-            {/* Credential source toggle */}
-            <div className="flex items-center gap-3">
-              <label className="relative inline-flex cursor-pointer items-center">
-                <input
-                  type="checkbox"
-                  checked={useFile}
-                  onChange={(e) => setUseFile(e.target.checked)}
-                  className="peer sr-only"
-                />
-                <div className="h-5 w-9 rounded-full bg-neutral-700 after:absolute after:left-[2px] after:top-[2px] after:h-4 after:w-4 after:rounded-full after:bg-white after:transition-all peer-checked:bg-white peer-checked:after:translate-x-full peer-checked:after:bg-black" />
-              </label>
-              <span className="text-sm text-neutral-400">
-                Use credentials from a JSON file
-              </span>
-            </div>
-
-            {useFile ? (
-              <InputField
-                label="User-info JSON path"
-                placeholder="userinfo.json"
-                value={userinfoPath}
-                onChange={setUserinfoPath}
+                onChange={(event) => {
+                  setCount(event.target.value);
+                  clearFieldError("count");
+                }}
+                onBlur={() => setFieldErrors((current) => ({ ...current, count: parseLoginCount(count).error }))}
+                disabled={loading}
+                error={fieldErrors.count}
+                hint="Between 1 and 100 sequential attempts. Large batches can take several minutes."
                 mono
               />
-            ) : (
-              <>
-                <InputField
-                  label="Username"
-                  placeholder="Enter username"
-                  value={username}
-                  onChange={setUsername}
+              <TextField
+                label="User-info JSON path"
+                name="userinfo-path"
+                value={userinfoPath}
+                onChange={(event) => setUserinfoPath(event.target.value)}
+                placeholder="userinfo.json"
+                disabled={loading}
+                hint="A server-side file containing one JSON array of username/password objects."
+                mono
+              />
+            </div>
+          ) : (
+            <div className="space-y-5">
+              <label
+                htmlFor="credential-source"
+                className="flex cursor-pointer items-start gap-3 rounded-xl border border-white/10 bg-white/[0.025] p-4 transition hover:border-white/20"
+              >
+                <input
+                  id="credential-source"
+                  type="checkbox"
+                  checked={useFile}
+                  onChange={(event) => {
+                    setUseFile(event.target.checked);
+                    setFieldErrors({});
+                  }}
+                  disabled={loading}
+                  className="peer sr-only"
                 />
-                <InputField
-                  label="Password"
-                  placeholder="Enter password"
-                  value={password}
-                  onChange={setPassword}
-                  type="password"
+                <span
+                  aria-hidden="true"
+                  className="relative mt-0.5 h-6 w-10 shrink-0 rounded-full bg-neutral-700 transition after:absolute after:left-1 after:top-1 after:h-4 after:w-4 after:rounded-full after:bg-white after:transition-transform peer-checked:bg-sky-300 peer-checked:after:translate-x-4 peer-checked:after:bg-slate-950 peer-focus-visible:ring-2 peer-focus-visible:ring-sky-300 peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-black peer-disabled:opacity-50"
                 />
-              </>
-            )}
-          </>
-        )}
+                <span>
+                  <span className="block text-sm font-medium text-neutral-200">Use a server-side credential file</span>
+                  <span className="mt-1 block text-xs leading-5 text-neutral-500">
+                    The server selects an account from the configured JSON array instead of sending credentials from this form.
+                  </span>
+                </span>
+              </label>
 
-        <button
-          type="submit"
-          disabled={
-            loading ||
-            !iface ||
-            (mode !== "random" && !useFile && (!username || !password)) ||
-            (mode === "macvlan" && !macAddress)
-          }
-          className="rounded-lg bg-white px-5 py-2.5 text-sm font-medium text-black transition-colors hover:bg-neutral-200 disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          {loading
-            ? mode === "random"
-              ? "Running..."
-              : "Logging in..."
-            : mode === "random"
-              ? "Start"
-              : "Login"}
-        </button>
-      </form>
+              {useFile ? (
+                <TextField
+                  label="User-info JSON path"
+                  name="userinfo-path"
+                  value={userinfoPath}
+                  onChange={(event) => setUserinfoPath(event.target.value)}
+                  placeholder="userinfo.json"
+                  disabled={loading}
+                  hint="Leave blank to use the backend's configured default file."
+                  mono
+                />
+              ) : (
+                <div className="grid gap-5 sm:grid-cols-2">
+                  <TextField
+                    label="Username"
+                    name="username"
+                    value={username}
+                    onChange={(event) => {
+                      setUsername(event.target.value);
+                      clearFieldError("username");
+                    }}
+                    autoComplete="username"
+                    placeholder="Campus username"
+                    disabled={loading}
+                    error={fieldErrors.username}
+                  />
+                  <TextField
+                    label="Password"
+                    name="password"
+                    type="password"
+                    value={password}
+                    onChange={(event) => {
+                      setPassword(event.target.value);
+                      clearFieldError("password");
+                    }}
+                    autoComplete="current-password"
+                    placeholder="Campus password"
+                    disabled={loading}
+                    error={fieldErrors.password}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="flex flex-col gap-3 border-t border-white/10 pt-6 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs leading-5 text-neutral-500">
+              {mode === "random"
+                ? "Attempts run sequentially and may stop early when account limits are reached."
+                : "Credentials are sent only through the same-origin server proxy."}
+            </p>
+            <Button
+              type="submit"
+              variant="primary"
+              busy={loading}
+              disabled={!iface}
+              className="w-full shrink-0 sm:w-auto"
+            >
+              {loading ? (mode === "random" ? "Running batch…" : "Connecting…") : mode === "random" ? "Start batch" : "Connect"}
+            </Button>
+          </div>
+        </form>
+      </Card>
 
       {result && (
-        <div className="rounded-xl border border-green-900/50 bg-green-950/20 p-6 space-y-2">
-          <p className="text-sm font-medium text-green-400">Login successful</p>
-          <p className="text-sm text-neutral-300">
-            IP:{" "}
-            <span className="font-[family-name:var(--font-geist-mono)]">
-              {result.ip}
-            </span>
-          </p>
-          <p className="text-sm text-neutral-300">User: {result.username}</p>
-          {result.mac && (
-            <p className="text-sm text-neutral-300">
-              MAC:{" "}
-              <span className="font-[family-name:var(--font-geist-mono)]">
-                {result.mac}
-              </span>
-            </p>
-          )}
-          <button
-            onClick={() => router.push("/")}
-            className="mt-2 text-sm text-neutral-400 underline underline-offset-4 hover:text-white transition-colors"
-          >
-            Go to Dashboard
-          </button>
-        </div>
+        <Alert
+          variant="success"
+          title="Connection established"
+          actions={
+            <Link className="text-sm font-semibold underline decoration-white/30 underline-offset-4 hover:decoration-white" href="/">
+              View connection status
+            </Link>
+          }
+        >
+          <dl className="mt-2 grid gap-2 sm:grid-cols-3">
+            <div><dt className="text-xs opacity-60">IP address</dt><dd className="break-all font-mono">{result.ip}</dd></div>
+            <div><dt className="text-xs opacity-60">User</dt><dd className="break-all">{result.username}</dd></div>
+            {result.mac && <div><dt className="text-xs opacity-60">MAC address</dt><dd className="break-all font-mono">{result.mac}</dd></div>}
+          </dl>
+        </Alert>
       )}
 
       {error && (
-        <div className="rounded-xl border border-red-900/50 bg-red-950/20 p-6">
-          <p className="text-sm text-red-400">{error}</p>
-        </div>
+        <Alert
+          variant={error.code === "cleanup_failed_after_success" ? "warning" : "error"}
+          title={
+            error.code === "cleanup_failed_after_success"
+              ? "Connected, cleanup incomplete"
+              : "Connection failed"
+          }
+        >
+          <p>{error.message}</p>
+          <p className="mt-1 font-mono text-xs opacity-60">{error.code}</p>
+        </Alert>
       )}
 
-      <ResultTable results={randomResults} />
-    </div>
-  );
-}
-
-function InputField({
-  label,
-  placeholder,
-  value,
-  onChange,
-  type = "text",
-  mono,
-}: {
-  label: string;
-  placeholder: string;
-  value: string;
-  onChange: (v: string) => void;
-  type?: string;
-  mono?: boolean;
-}) {
-  return (
-    <div className="flex flex-col gap-2">
-      <label className="text-sm text-neutral-400">{label}</label>
-      <input
-        type={type}
-        placeholder={placeholder}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className={`rounded-lg border border-neutral-800 bg-neutral-900 px-4 py-2.5 text-sm text-white placeholder-neutral-600 outline-none transition-colors focus:border-neutral-600 ${
-          mono ? "font-[family-name:var(--font-geist-mono)]" : ""
-        }`}
-      />
+      <ResultTable summary={batchSummary} />
     </div>
   );
 }

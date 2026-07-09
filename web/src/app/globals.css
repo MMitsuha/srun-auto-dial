@@ -1,24 +1,55 @@
 @import "tailwindcss";
 
 :root {
-  --background: #000000;
-  --foreground: #ededed;
-  --muted: #888888;
-  --border: #262626;
-  --card: #0a0a0a;
-  --success: #00c853;
-  --error: #ff1744;
+  color-scheme: dark;
+  --background: #050608;
+  --foreground: #f5f5f5;
+  --muted: #a3a3a3;
+  --border: rgba(255, 255, 255, 0.1);
+  --card: rgba(10, 10, 12, 0.82);
+  --accent: #7dd3fc;
+  --success: #34d399;
+  --error: #f87171;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--background);
 }
 
 body {
-  background: var(--background);
+  min-width: 280px;
+  background:
+    radial-gradient(circle at 12% -10%, rgba(14, 165, 233, 0.13), transparent 31rem),
+    radial-gradient(circle at 88% 5%, rgba(99, 102, 241, 0.09), transparent 26rem),
+    var(--background);
   color: var(--foreground);
-  font-family: var(--font-geist-sans), system-ui, -apple-system, "Segoe UI",
-    Roboto, Helvetica, Arial, sans-serif;
+  font-family: var(--font-geist-sans), system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial,
+    sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
+button,
+input,
+select {
+  font: inherit;
+}
+
 ::selection {
-  background: rgba(255, 255, 255, 0.15);
+  background: rgba(125, 211, 252, 0.25);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
