@@ -1,8 +1,9 @@
+use super::models::{ApiErrorBody, ApiResponse};
 use axum::extract::Request;
 use axum::http::StatusCode;
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
-use serde_json::json;
+use subtle::ConstantTimeEq;
 
 /// API key authentication middleware.
 /// If `api_key` is None, all requests are allowed.
@@ -26,17 +27,34 @@ pub async fn api_key_middleware(req: Request, next: Next, api_key: Option<String
         });
 
     match provided {
-        Some(key) if key == expected_key => next.run(req).await,
+        Some(key) if keys_match(&key, &expected_key) => next.run(req).await,
         _ => {
             tracing::warn!("unauthorized API request");
             (
                 StatusCode::UNAUTHORIZED,
-                axum::Json(json!({
-                    "success": false,
-                    "error": "unauthorized: missing or invalid API key"
-                })),
+                axum::Json(ApiResponse::<()>::err_body(ApiErrorBody::new(
+                    "unauthorized",
+                    "A valid API key is required.",
+                ))),
             )
                 .into_response()
         }
+    }
+}
+
+fn keys_match(provided: &str, expected: &str) -> bool {
+    provided.as_bytes().ct_eq(expected.as_bytes()).into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::keys_match;
+
+    #[test]
+    fn api_keys_must_match_exactly() {
+        assert!(keys_match("secret", "secret"));
+        assert!(!keys_match("Secret", "secret"));
+        assert!(!keys_match("secret ", "secret"));
+        assert!(!keys_match("short", "a-longer-key"));
     }
 }

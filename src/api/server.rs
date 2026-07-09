@@ -9,7 +9,7 @@ use axum::routing::{get, post};
 use rtnetlink::Handle;
 use std::sync::Arc;
 use tokio::net::TcpListener;
-use tower_http::{cors::CorsLayer, trace::TraceLayer};
+use tower_http::trace::TraceLayer;
 use tracing::info;
 
 pub async fn run(config: Arc<Config>, handle: Handle) -> Result<()> {
@@ -27,15 +27,16 @@ pub async fn run(config: Arc<Config>, handle: Handle) -> Result<()> {
         .route("/api/login/macvlan", post(handlers::login_macvlan))
         .route("/api/logout/macvlan", post(handlers::logout_macvlan))
         .route("/api/login/random", post(handlers::login_random))
+        .fallback(handlers::not_found)
+        .method_not_allowed_fallback(handlers::method_not_allowed)
         .layer(middleware::from_fn(move |req, next| {
             api_key_middleware(req, next, api_key.clone())
         }))
         .layer(TraceLayer::new_for_http())
-        .layer(CorsLayer::permissive())
         .with_state(service);
 
-    let addr = format!("{}:{}", config.server.host, config.server.port);
-    let listener = TcpListener::bind(&addr).await?;
+    let listener = TcpListener::bind((config.server.host.as_str(), config.server.port)).await?;
+    let addr = listener.local_addr()?;
     info!(addr = %addr, "API server listening");
     axum::serve(listener, app).await?;
     Ok(())

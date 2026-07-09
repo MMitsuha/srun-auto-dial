@@ -1,3 +1,4 @@
+use crate::error::SrunError;
 use serde::{Deserialize, Serialize};
 
 // ---- Requests ----
@@ -61,7 +62,25 @@ pub struct ApiResponse<T: Serialize> {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<T>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
+    pub error: Option<ApiErrorBody>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ApiErrorBody {
+    pub code: &'static str,
+    pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub field: Option<&'static str>,
+}
+
+impl ApiErrorBody {
+    pub fn new(code: &'static str, message: impl Into<String>) -> Self {
+        Self {
+            code,
+            message: message.into(),
+            field: None,
+        }
+    }
 }
 
 impl<T: Serialize> ApiResponse<T> {
@@ -83,11 +102,23 @@ impl ApiResponse<()> {
         }
     }
 
-    pub fn err(message: String) -> Self {
+    pub fn err(error: &SrunError) -> Self {
         Self {
             success: false,
             data: None,
-            error: Some(message),
+            error: Some(ApiErrorBody {
+                code: error.code(),
+                message: error.public_message(),
+                field: error.field(),
+            }),
+        }
+    }
+
+    pub fn err_body(error: ApiErrorBody) -> Self {
+        Self {
+            success: false,
+            data: None,
+            error: Some(error),
         }
     }
 }
