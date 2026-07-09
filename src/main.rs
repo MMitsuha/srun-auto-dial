@@ -80,6 +80,7 @@ async fn main() -> Result<()> {
             if let Some(h) = host {
                 config.server.host = h;
             }
+            config.validate()?;
             let config = Arc::new(config);
             api::run(config, handle).await
         }

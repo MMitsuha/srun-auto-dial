@@ -1,5 +1,6 @@
 use crate::error::{Result, SrunError};
 use serde::{Deserialize, Serialize};
+use std::io::ErrorKind;
 use std::path::Path;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -67,34 +68,136 @@ impl Default for ServerConfig {
 }
 
 impl Config {
-    /// Load config from file path if provided, otherwise use defaults.
-    /// If the file doesn't exist, fall back to defaults silently.
+    /// Load and validate configuration. A missing implicit `srun.toml` uses
+    /// defaults; every other read or parse failure is reported explicitly.
     pub fn load(path: Option<&Path>) -> Result<Self> {
-        match path {
+        let mut config = match path {
             Some(p) => {
                 let content = std::fs::read_to_string(p).map_err(|e| {
-                    SrunError::Config(format!("无法读取配置文件 {}: {}", p.display(), e))
+                    SrunError::Config(format!(
+                        "failed to read configuration file '{}': {e}",
+                        p.display()
+                    ))
                 })?;
-                toml::from_str(&content)
-                    .map_err(|e| SrunError::Config(format!("配置文件解析失败: {}", e)))
+                toml::from_str(&content).map_err(|e| {
+                    SrunError::Config(format!(
+                        "failed to parse configuration file '{}': {e}",
+                        p.display()
+                    ))
+                })?
             }
-            None => {
-                // Try default path "srun.toml" silently
-                if let Ok(content) = std::fs::read_to_string("srun.toml") {
-                    toml::from_str(&content)
-                        .map_err(|e| SrunError::Config(format!("配置文件解析失败: {}", e)))
-                } else {
-                    Ok(Self::default())
+            None => match std::fs::read_to_string("srun.toml") {
+                Ok(content) => toml::from_str(&content)
+                    .map_err(|e| SrunError::Config(format!("failed to parse 'srun.toml': {e}")))?,
+                Err(error) if error.kind() == ErrorKind::NotFound => Self::default(),
+                Err(error) => {
+                    return Err(SrunError::Config(format!(
+                        "failed to read 'srun.toml': {error}"
+                    )));
                 }
-            }
-        }
+            },
+        };
+
+        config.validate()?;
+        Ok(config)
     }
 
-    /// Derive the Host header value from portal_url
-    pub fn portal_host(&self) -> &str {
-        self.portal_url
-            .strip_prefix("http://")
-            .or_else(|| self.portal_url.strip_prefix("https://"))
-            .unwrap_or(&self.portal_url)
+    pub fn validate(&mut self) -> Result<()> {
+        self.portal_url = self.portal_url.trim().trim_end_matches('/').to_string();
+        let portal = reqwest::Url::parse(&self.portal_url)
+            .map_err(|e| SrunError::Config(format!("portal_url is not a valid URL: {e}")))?;
+        if !matches!(portal.scheme(), "http" | "https") || portal.host_str().is_none() {
+            return Err(SrunError::Config(
+                "portal_url must be an absolute http:// or https:// URL".to_string(),
+            ));
+        }
+        if !portal.username().is_empty() || portal.password().is_some() {
+            return Err(SrunError::Config(
+                "portal_url must not contain embedded credentials".to_string(),
+            ));
+        }
+        if portal.query().is_some() || portal.fragment().is_some() {
+            return Err(SrunError::Config(
+                "portal_url must not contain a query string or fragment".to_string(),
+            ));
+        }
+        self.ac_id = self.ac_id.trim().to_string();
+        self.server.host = self.server.host.trim().to_string();
+        if self.ac_id.is_empty() {
+            return Err(SrunError::Config("ac_id cannot be empty".to_string()));
+        }
+        if self.server.host.is_empty() {
+            return Err(SrunError::Config("server.host cannot be empty".to_string()));
+        }
+        if self
+            .server
+            .api_key
+            .as_ref()
+            .is_some_and(|key| key.trim().is_empty())
+        {
+            return Err(SrunError::Config(
+                "server.api_key cannot be empty when provided".to_string(),
+            ));
+        }
+        if self
+            .server
+            .api_key
+            .as_ref()
+            .is_some_and(|key| key != key.trim())
+        {
+            return Err(SrunError::Config(
+                "server.api_key cannot have leading or trailing whitespace".to_string(),
+            ));
+        }
+        if self
+            .userinfo_path
+            .as_ref()
+            .is_some_and(|path| path.trim().is_empty())
+        {
+            return Err(SrunError::Config(
+                "userinfo_path cannot be empty when provided".to_string(),
+            ));
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Config;
+
+    #[test]
+    fn validates_and_normalizes_portal_url() {
+        let mut config = Config {
+            portal_url: " https://portal.example.edu:8443/ ".to_string(),
+            ac_id: " 1 ".to_string(),
+            server: super::ServerConfig {
+                host: " 127.0.0.1 ".to_string(),
+                ..super::ServerConfig::default()
+            },
+            ..Config::default()
+        };
+        config.validate().unwrap();
+        assert_eq!(config.portal_url, "https://portal.example.edu:8443");
+        assert_eq!(config.ac_id, "1");
+        assert_eq!(config.server.host, "127.0.0.1");
+    }
+
+    #[test]
+    fn rejects_invalid_configuration_values() {
+        let mut config = Config {
+            portal_url: "portal.example.edu".to_string(),
+            ..Config::default()
+        };
+        assert!(config.validate().is_err());
+
+        let mut config = Config {
+            server: super::ServerConfig {
+                api_key: Some("   ".to_string()),
+                ..super::ServerConfig::default()
+            },
+            ..Config::default()
+        };
+        assert!(config.validate().is_err());
     }
 }
