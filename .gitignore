@@ -1,5 +1,12 @@
 # Build
 /target/
+/web/node_modules/
+/web/.next/
+/web/*.tsbuildinfo
+
+# Web environment (may contain API credentials)
+/web/.env*
+!/web/.env.example
 
 # Config (may contain credentials)
 srun.toml
