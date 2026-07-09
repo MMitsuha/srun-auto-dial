@@ -33,6 +33,19 @@ pub fn get_base64(s: &[u8]) -> String {
         out.push(PADCHAR);
     }
 
-    // SAFETY: ALPHA only contains ASCII bytes, PADCHAR is ASCII
-    unsafe { String::from_utf8_unchecked(out) }
+    out.into_iter().map(char::from).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::get_base64;
+
+    #[test]
+    fn encodes_empty_and_partial_blocks() {
+        assert_eq!(get_base64(b""), "");
+        assert_eq!(get_base64(b"a").len(), 4);
+        assert!(get_base64(b"a").ends_with("=="));
+        assert!(get_base64(b"ab").ends_with('='));
+        assert_eq!(get_base64(b"abc").len(), 4);
+    }
 }

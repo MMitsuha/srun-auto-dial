@@ -19,10 +19,6 @@ pub fn build_default_headers(config: &Config) -> HeaderMap {
     );
     h.insert("Connection", HeaderValue::from_static("keep-alive"));
 
-    if let Ok(v) = HeaderValue::from_str(config.portal_host()) {
-        h.insert("Host", v);
-    }
-
     let referer = format!(
         "{}/srun_portal_pc?ac_id={}&theme=pro",
         config.portal_url, config.ac_id
@@ -67,9 +63,12 @@ pub fn extract_json_from_jsonp<'a>(
     callback: &str,
 ) -> crate::error::Result<&'a str> {
     let prefix = format!("{}(", callback);
+    let jsonp = jsonp.trim();
+    let jsonp = jsonp.strip_suffix(';').unwrap_or(jsonp).trim_end();
     jsonp
         .strip_prefix(&prefix)
         .and_then(|s| s.strip_suffix(')'))
+        .map(str::trim)
         .ok_or(SrunError::JsonpParse)
 }
 
@@ -92,7 +91,7 @@ pub fn get_sha1(value: &str) -> String {
 pub fn timestamp_millis() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .expect("system clock before UNIX epoch")
+        .unwrap_or_default()
         .as_millis() as u64
 }
 
@@ -100,6 +99,24 @@ pub fn timestamp_millis() -> u64 {
 pub fn timestamp_secs() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .expect("system clock before UNIX epoch")
+        .unwrap_or_default()
         .as_secs()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::extract_json_from_jsonp;
+
+    #[test]
+    fn extracts_jsonp_with_common_whitespace_and_semicolon() {
+        assert_eq!(
+            extract_json_from_jsonp("  callback( {\"ok\":true} );\n", "callback").unwrap(),
+            "{\"ok\":true}"
+        );
+    }
+
+    #[test]
+    fn rejects_a_different_callback() {
+        assert!(extract_json_from_jsonp("other({})", "callback").is_err());
+    }
 }
